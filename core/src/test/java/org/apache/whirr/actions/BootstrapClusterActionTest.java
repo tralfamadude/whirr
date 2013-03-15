@@ -146,7 +146,7 @@ public class BootstrapClusterActionTest {
     BootstrapClusterAction bootstrapper =
         new BootstrapClusterAction(getCompute, handlerMap, nodeStarterFactory);
     
-    bootstrapper.execute(clusterSpec, null);
+    bootstrapper.execute(clusterSpec, null, -1);
     if (nodeStarterFactory != null) {
       nodeStarterFactory.validateCompletion();
     }
@@ -218,7 +218,7 @@ public class BootstrapClusterActionTest {
     nodeStarterFactory = new TestNodeStarterFactory(reaction);
     BootstrapClusterAction bootstrapper = new BootstrapClusterAction(getCompute, handlerMap, nodeStarterFactory);
     
-    bootstrapper.execute(clusterSpec, null); // this should file with too many retries
+    bootstrapper.execute(clusterSpec, null, -1); // this should file with too many retries
     if (nodeStarterFactory != null) {
       nodeStarterFactory.validateCompletion();
     }
@@ -391,7 +391,7 @@ public class BootstrapClusterActionTest {
     nodeStarterFactory = new TestNodeStarterFactory(reaction);
     BootstrapClusterAction bootstrapper = new BootstrapClusterAction(getCompute, handlerMap, nodeStarterFactory);
     
-    bootstrapper.execute(clusterSpec, null);
+    bootstrapper.execute(clusterSpec, null, -1);
     
     if (nodeStarterFactory != null) {
       nodeStarterFactory.validateCompletion();
@@ -453,7 +453,7 @@ public class BootstrapClusterActionTest {
     nodeStarterFactory = new TestNodeStarterFactory(reaction);
     BootstrapClusterAction bootstrapper = new BootstrapClusterAction(getCompute, handlerMap, nodeStarterFactory);
     
-    bootstrapper.execute(clusterSpec, null);
+    bootstrapper.execute(clusterSpec, null, -1);
     
     if (nodeStarterFactory != null) {
       nodeStarterFactory.validateCompletion();

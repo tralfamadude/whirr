@@ -95,6 +95,9 @@ public class Cluster {
       return loginCredentials;
     }
 
+    /**
+     * @return the set of roles for this instance (for all waves).
+     */
     public Set<String> getRoles() {
       return roles;
     }

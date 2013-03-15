@@ -21,7 +21,9 @@ package org.apache.whirr;
 import static com.google.common.collect.Iterables.get;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.io.FileReader;
@@ -48,6 +50,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.google.common.io.Files;
 import com.jcraft.jsch.JSchException;
+import org.junit.rules.ExpectedException;
 
 public class ClusterSpecTest {
 
@@ -158,7 +161,7 @@ public class ClusterSpecTest {
 
     ClusterSpec spec = ClusterSpec.withNoDefaults(conf);
     Assert.assertEquals(IOUtils.toString(
-      new FileReader(keys.get("public"))), spec.getPublicKey());
+        new FileReader(keys.get("public"))), spec.getPublicKey());
   }
 
   @Test(expected = ConfigurationException.class)
@@ -167,8 +170,8 @@ public class ClusterSpecTest {
     File privateKeyFile = File.createTempFile("private", "key");
     privateKeyFile.deleteOnExit();
     Files.write(("-----BEGIN RSA PRIVATE KEY-----\n" +
-      "DUMMY FILE\n" +
-      "-----END RSA PRIVATE KEY-----").getBytes(), privateKeyFile);
+        "DUMMY FILE\n" +
+        "-----END RSA PRIVATE KEY-----").getBytes(), privateKeyFile);
 
     Configuration conf = new PropertiesConfiguration();
     conf.setProperty("whirr.private-key-file", privateKeyFile.getAbsolutePath());
@@ -255,6 +258,7 @@ public class ClusterSpecTest {
     conf.addProperty("whirr.instance-templates", "1 hadoop-namenode+hadoop-jobtracker,3 hadoop-datanode+hadoop-tasktracker");
     conf.addProperty("whirr.instance-templates-max-percent-failures", "60 % hadoop-datanode+hadoop-tasktracker");
     ClusterSpec expectedClusterSpec = ClusterSpec.withNoDefaults(conf);
+    // the following is not executed
     List<InstanceTemplate> templates = expectedClusterSpec.getInstanceTemplates();
     InstanceTemplate t1 = templates.get(0);
     assertThat(t1.getMinNumberOfInstances(), is(1));
@@ -268,6 +272,7 @@ public class ClusterSpecTest {
     conf.addProperty("whirr.instance-templates", "1 hadoop-namenode+hadoop-jobtracker,3 hadoop-datanode+hadoop-tasktracker");
     conf.addProperty("whirr.instance-templates-max-percent-failures", "60% hadoop-datanode+hadoop-tasktracker");
     ClusterSpec expectedClusterSpec = ClusterSpec.withNoDefaults(conf);
+    // the following is not executed
     List<InstanceTemplate> templates = expectedClusterSpec.getInstanceTemplates();
     InstanceTemplate t1 = templates.get(0);
     assertThat(t1.getMinNumberOfInstances(), is(1));
@@ -275,10 +280,183 @@ public class ClusterSpecTest {
     assertThat(t2.getMinNumberOfInstances(), is(2));
   }
 
+  /** verify that invalid wave specs are detected as error. */
+  @Test
+  public void testWaveInstanceTemplateValidity() throws Exception
+  {
+    // check mismatched number of template groups
+    ClusterSpec expectedClusterSpec = null;
+    Configuration conf = new PropertiesConfiguration();
+    conf.addProperty("whirr.instance-templates.0", "1 zookeeper,1 hadoop-tasktracker, 1 noop,"); // 3
+    conf.addProperty("whirr.instance-templates.1", "1 hadoop-namenode+hadoop-jobtracker,1 hadoop-datanode"); // 2
+    try {
+      expectedClusterSpec = ClusterSpec.withNoDefaults(conf);
+      assertFalse("exception NOT thrown after mismatched number of template groups in whirr.instance-templates waves", true);
+    } catch (Exception expectedException) {
+      assertTrue(expectedException instanceof IllegalArgumentException);
+    }
+
+    // check mismatched machine set instance counts
+    conf = new PropertiesConfiguration();
+    conf.addProperty("whirr.instance-templates.0", "1 zookeeper,3 noop"); // 1,3
+    conf.addProperty("whirr.instance-templates.1",
+        "1 hadoop-namenode+hadoop-jobtracker,1 hadoop-datanode+hadoop-tasktracker"); // 1,1
+    try {
+      expectedClusterSpec = ClusterSpec.withNoDefaults(conf);
+      assertFalse("exception NOT thrown after mismatched instance counts in whirr.instance-templates waves", true);
+    } catch (Exception expectedException) {
+      assertTrue(expectedException instanceof IllegalArgumentException);
+    }
+
+    //  role duplication (especially noop) should be allowed
+    conf = new PropertiesConfiguration();
+    conf.addProperty("whirr.instance-templates.0", "1 zookeeper,3 noop");
+    conf.addProperty("whirr.instance-templates.1", "1 hadoop-datanode+hadoop-tasktracker,3 noop");
+    try {
+      expectedClusterSpec = ClusterSpec.withNoDefaults(conf);
+    } catch (Exception e) {
+      assertFalse("exception thrown after noop duplicated roles in whirr.instance-templates waves", true);
+    }
+
+    // check that wave not starting at 0 is an exception
+    conf = new PropertiesConfiguration();
+    conf.addProperty("whirr.instance-templates.1", "1 zookeeper,3 noop");
+    conf.addProperty("whirr.instance-templates.2", "1 hadoop-datanode+hadoop-tasktracker,3 hadoop-datanode");
+    try {
+      expectedClusterSpec = ClusterSpec.withNoDefaults(conf);
+      assertFalse("exception NOT thrown after wave not starting at 0 in whirr.instance-templates waves", true);
+    } catch (Exception expectedException) {
+      assertTrue(expectedException instanceof IllegalArgumentException);
+    }
+
+    // check that mixing wave and non-wave is an exception
+    conf = new PropertiesConfiguration();
+    conf.addProperty("whirr.instance-templates", "1 zookeeper,3 noop");
+    conf.addProperty("whirr.instance-templates.0", "1 hadoop-datanode+hadoop-tasktracker,3 hadoop-datanode");
+    try {
+      expectedClusterSpec = ClusterSpec.withNoDefaults(conf);
+      assertFalse("exception NOT thrown after mixing wave and non-wave in whirr.instance-templates waves", true);
+    } catch (Exception expectedException) {
+      assertTrue(expectedException instanceof IllegalArgumentException);
+    }
+
+  }
+
+  @Test
+  public void testWaveInstanceTemplates() throws Exception {
+    Configuration conf = new PropertiesConfiguration();
+    conf.addProperty("whirr.instance-templates.0", "1 zookeeper,3 noop");
+    conf.addProperty("whirr.instance-templates.1", "1 hadoop-namenode+hadoop-jobtracker,3 hadoop-datanode+hadoop-tasktracker");
+    ClusterSpec expectedClusterSpec = ClusterSpec.withNoDefaults(conf);
+    List<InstanceTemplate> templates = expectedClusterSpec.getInstanceTemplates();
+    assertThat(templates.size(), is(2));
+
+    InstanceTemplate t1 = templates.get(0);
+    InstanceTemplate t2 = templates.get(1);
+    assertThat(t1.getWaveCount(), is(2));
+    // check count of roles in first template for all waves
+    assertThat(t1.getRoles().size(), is(3));
+    // check count of roles in first template for wave 0
+    assertThat(t1.getRoles(0).size(), is(1));
+    // check count of roles in first template for wave 1
+    assertThat(t1.getRoles(1).size(), is(2));
+    // same tests for second instance template
+    assertThat(t2.getWaveCount(), is(2));
+    assertThat(t2.getRoles().size(), is(3));
+    assertThat(t2.getRoles(0).size(), is(1));
+    assertThat(t2.getRoles(1).size(), is(2));
+    // ensure that intersection of Sets is empty
+    Set<String> t1rolesWave0 = t1.getRoles(0);
+    Set<String> t1rolesWave1 = t1.getRoles(1);
+    for (String role : t1rolesWave0) {
+      assertFalse(t1rolesWave1.contains(role));
+    }
+  }
+
   @Test
   public void testNumberOfInstancesPerTemplate() throws Exception {
     Configuration conf = new PropertiesConfiguration();
     conf.addProperty("whirr.instance-templates", "1 hadoop-namenode+hadoop-jobtracker,3 hadoop-datanode+hadoop-tasktracker");
+    conf.addProperty("whirr.instance-templates-max-percent-failures", "100 hadoop-namenode+hadoop-jobtracker,60 hadoop-datanode+hadoop-tasktracker");
+    ClusterSpec expectedClusterSpec = ClusterSpec.withNoDefaults(conf);
+    List<InstanceTemplate> templates = expectedClusterSpec.getInstanceTemplates();
+    InstanceTemplate t1 = templates.get(0);
+    assertThat(t1.getMinNumberOfInstances(), is(1));
+    InstanceTemplate t2 = templates.get(1);
+    assertThat(t2.getMinNumberOfInstances(), is(2));
+
+    conf.setProperty("whirr.instance-templates-max-percent-failures", "60 hadoop-datanode+hadoop-tasktracker");
+    expectedClusterSpec = ClusterSpec.withNoDefaults(conf);
+    templates = expectedClusterSpec.getInstanceTemplates();
+    t1 = templates.get(0);
+    assertThat(t1.getMinNumberOfInstances(), is(1));
+    t2 = templates.get(1);
+    assertThat(t2.getMinNumberOfInstances(), is(2));
+
+    conf.addProperty("whirr.instance-templates-minumum-number-of-instances", "1 hadoop-datanode+hadoop-tasktracker");
+    expectedClusterSpec = ClusterSpec.withNoDefaults(conf);
+    templates = expectedClusterSpec.getInstanceTemplates();
+    t1 = templates.get(0);
+    assertThat(t1.getMinNumberOfInstances(), is(1));
+    t2 = templates.get(1);
+    assertThat(t2.getMinNumberOfInstances(), is(2));
+
+    conf.setProperty("whirr.instance-templates-minimum-number-of-instances", "3 hadoop-datanode+hadoop-tasktracker");
+    expectedClusterSpec = ClusterSpec.withNoDefaults(conf);
+    templates = expectedClusterSpec.getInstanceTemplates();
+    t1 = templates.get(0);
+    assertThat(t1.getMinNumberOfInstances(), is(1));
+    t2 = templates.get(1);
+    assertThat(t2.getMinNumberOfInstances(), is(3));
+  }
+
+  /** Check that a single wave has same overall "dimensions" as a no-wave spec. */
+  @Test
+  public void testNumberOfInstancesPerTemplateWithWave0() throws Exception {
+    Configuration conf = new PropertiesConfiguration();
+    conf.addProperty("whirr.instance-templates.0", "1 hadoop-namenode+hadoop-jobtracker,3 hadoop-datanode+hadoop-tasktracker");
+    conf.addProperty("whirr.instance-templates-max-percent-failures", "100 hadoop-namenode+hadoop-jobtracker,60 hadoop-datanode+hadoop-tasktracker");
+    ClusterSpec expectedClusterSpec = ClusterSpec.withNoDefaults(conf);
+    List<InstanceTemplate> templates = expectedClusterSpec.getInstanceTemplates();
+
+    InstanceTemplate t1 = templates.get(0);
+    assertThat(t1.getMinNumberOfInstances(), is(1));
+    InstanceTemplate t2 = templates.get(1);
+    assertThat(t2.getMinNumberOfInstances(), is(2));
+
+    conf.setProperty("whirr.instance-templates-max-percent-failures", "60 hadoop-datanode+hadoop-tasktracker");
+    expectedClusterSpec = ClusterSpec.withNoDefaults(conf);
+    templates = expectedClusterSpec.getInstanceTemplates();
+    t1 = templates.get(0);
+    assertThat(t1.getMinNumberOfInstances(), is(1));
+    t2 = templates.get(1);
+    assertThat(t2.getMinNumberOfInstances(), is(2));
+
+    conf.addProperty("whirr.instance-templates-minumum-number-of-instances", "1 hadoop-datanode+hadoop-tasktracker");
+    expectedClusterSpec = ClusterSpec.withNoDefaults(conf);
+    templates = expectedClusterSpec.getInstanceTemplates();
+    t1 = templates.get(0);
+    assertThat(t1.getMinNumberOfInstances(), is(1));
+    t2 = templates.get(1);
+    assertThat(t2.getMinNumberOfInstances(), is(2));
+
+    conf.setProperty("whirr.instance-templates-minimum-number-of-instances", "3 hadoop-datanode+hadoop-tasktracker");
+    expectedClusterSpec = ClusterSpec.withNoDefaults(conf);
+    templates = expectedClusterSpec.getInstanceTemplates();
+    t1 = templates.get(0);
+    assertThat(t1.getMinNumberOfInstances(), is(1));
+    t2 = templates.get(1);
+    assertThat(t2.getMinNumberOfInstances(), is(3));
+  }
+
+  /** Check that a 2 wave has correct overall "dimensions" as equivalent no-wave spec. */
+  @Test
+  public void testNumberOfInstancesPerTemplateWithWave2() throws Exception {
+    Configuration conf = new PropertiesConfiguration();
+
+    conf.addProperty("whirr.instance-templates.0", "1 hadoop-namenode,3 noop");
+    conf.addProperty("whirr.instance-templates.1", "1 hadoop-jobtracker,3 hadoop-datanode+hadoop-tasktracker");
+
     conf.addProperty("whirr.instance-templates-max-percent-failures", "100 hadoop-namenode+hadoop-jobtracker,60 hadoop-datanode+hadoop-tasktracker");
     ClusterSpec expectedClusterSpec = ClusterSpec.withNoDefaults(conf);
     List<InstanceTemplate> templates = expectedClusterSpec.getInstanceTemplates();

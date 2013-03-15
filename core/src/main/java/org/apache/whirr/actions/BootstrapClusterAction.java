@@ -79,15 +79,19 @@ public class BootstrapClusterAction extends ScriptBasedClusterAction {
   }
   
   @Override
-  protected void doAction(Map<InstanceTemplate, ClusterActionEvent> eventMap)
+  protected void doAction(Map<InstanceTemplate, ClusterActionEvent> eventMap, int wave)
       throws IOException, InterruptedException {
-    LOG.info("Bootstrapping cluster");
-    
+
     ExecutorService executorService = Executors.newCachedThreadPool();    
     Map<InstanceTemplate, Future<Set<? extends NodeMetadata>>> futures = Maps.newHashMap();
     
     // initialize startup processes per InstanceTemplates
     for (Entry<InstanceTemplate, ClusterActionEvent> entry : eventMap.entrySet()) {
+      Cluster priorCluster = entry.getValue().getCluster();
+      if (priorCluster != null &&  priorCluster.getInstances().size() > 0) {
+        LOG.info("Bootstrapping cluster, using prior instances");
+        return; // instances already allocated
+      }
       final InstanceTemplate instanceTemplate = entry.getKey();
       final ClusterSpec clusterSpec = entry.getValue().getClusterSpec();
 
@@ -107,7 +111,7 @@ public class BootstrapClusterAction extends ScriptBasedClusterAction {
               instanceTemplate.getNumberOfInstances(),
               instanceTemplate.getMinNumberOfInstances(),
               maxNumberOfRetries,
-              instanceTemplate.getRoles(),
+              instanceTemplate.getRoles(wave),
               computeService, template, executorService, nodeStarterFactory));
       futures.put(instanceTemplate, nodesFuture);
     }
@@ -117,29 +121,33 @@ public class BootstrapClusterAction extends ScriptBasedClusterAction {
         futures.entrySet()) {
       Set<? extends NodeMetadata> nodes;
       try {
-        nodes = entry.getValue().get();
+        nodes = entry.getValue().get();     // await Future
       } catch (ExecutionException e) {
         // Some of the StartupProcess decided to throw IOException, 
         // to fail the cluster because of insufficient successfully started
         // nodes after retries
         throw new IOException(e);
       }
+      // when building Instances, use flattened roles since we want Instance
+      //   to reflect the final cluster, not the work in progress.
       Set<String> roles = entry.getKey().getRoles();
       instances.addAll(getInstances(roles, nodes));
     }
     Cluster cluster = new Cluster(instances);
+    // ensure all events use the new Cluster object
     for (ClusterActionEvent event : eventMap.values()) {
       event.setCluster(cluster);
     }
+    LOG.info("Bootstrapping cluster, finished provisioning instances");
   }
 
-  private Set<Instance> getInstances(final Set<String> roles,
+  private Set<Instance> getInstances(final Set<String> rolesFlattened,
       Set<? extends NodeMetadata> nodes) {
     return Sets.newLinkedHashSet(Collections2.transform(Sets.newLinkedHashSet(nodes),
         new Function<NodeMetadata, Instance>() {
       @Override
       public Instance apply(NodeMetadata node) {
-        return new Instance(node.getCredentials(), roles,
+        return new Instance(node.getCredentials(), rolesFlattened,
                             Iterables.get(node.getPublicAddresses().size() > 0 ? node.getPublicAddresses() : node.getPrivateAddresses(), 0),
                             Iterables.get(node.getPrivateAddresses().size() > 0 ? node.getPrivateAddresses() : node.getPublicAddresses(), 0),
             node.getId(), node);

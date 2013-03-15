@@ -58,7 +58,8 @@ public class BootstrapTemplate {
     StatementBuilder statementBuilder,
     InstanceTemplate instanceTemplate
   ) {
-    String name = "bootstrap-" + Joiner.on('_').join(instanceTemplate.getRoles());
+    // only wave 0 does bootstrap
+    String name = "bootstrap-" + Joiner.on('_').join(instanceTemplate.getRoles(0));
 
     LOG.info("Configuring template for {}", name);
 

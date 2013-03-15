@@ -122,7 +122,7 @@ public abstract class ScriptBasedClusterActionTest<T extends ScriptBasedClusterA
     T action = newClusterActionInstance(EMPTYSET, EMPTYSET);
     DryRun dryRun = getDryRunForAction(action).reset();
     
-    action.execute(clusterSpec, cluster);
+    action.execute(clusterSpec, cluster, -1);
     
     List<StatementOnNode> executions = dryRun.getTotallyOrderedExecutions();
 
@@ -140,7 +140,7 @@ public abstract class ScriptBasedClusterActionTest<T extends ScriptBasedClusterA
     T action = newClusterActionInstance(ImmutableSet.of("noop2"), EMPTYSET);
     DryRun dryRun = getDryRunForAction(action).reset();
     
-    action.execute(clusterSpec, cluster);
+    action.execute(clusterSpec, cluster, -1);
 
     List<StatementOnNode> executions = dryRun.getTotallyOrderedExecutions();
 
@@ -158,7 +158,7 @@ public abstract class ScriptBasedClusterActionTest<T extends ScriptBasedClusterA
     T action = newClusterActionInstance(EMPTYSET, newHashSet(instanceId));
     DryRun dryRun = getDryRunForAction(action).reset();
 
-    action.execute(clusterSpec, cluster);
+    action.execute(clusterSpec, cluster, -1);
 
     List<StatementOnNode> executions = dryRun.getTotallyOrderedExecutions();
     
@@ -175,7 +175,7 @@ public abstract class ScriptBasedClusterActionTest<T extends ScriptBasedClusterA
     T action = newClusterActionInstance(newHashSet("noop1"), newHashSet(instanceId));
     DryRun dryRun = getDryRunForAction(action).reset();
 
-    action.execute(clusterSpec, cluster);
+    action.execute(clusterSpec, cluster, -1);
 
     List<StatementOnNode> executions = dryRun.getTotallyOrderedExecutions();
     
@@ -192,7 +192,7 @@ public abstract class ScriptBasedClusterActionTest<T extends ScriptBasedClusterA
     T action = newClusterActionInstance(ImmutableSet.of("noop"), EMPTYSET);
     DryRun dryRun = getDryRunForAction(action).reset();
     
-    action.execute(clusterSpec, cluster);
+    action.execute(clusterSpec, cluster, -1);
 
     List<StatementOnNode> executions = dryRun.getTotallyOrderedExecutions();
     

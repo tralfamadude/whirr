@@ -51,6 +51,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
@@ -110,10 +111,18 @@ public class ClusterController {
   public Cluster launchCluster(ClusterSpec clusterSpec)
     throws IOException, InterruptedException {
     try {
-      Cluster cluster = bootstrapCluster(clusterSpec);
-      cluster = configureServices(clusterSpec, cluster);
-      return startServices(clusterSpec, cluster);
+      final List<InstanceTemplate> instanceTemplates = clusterSpec.getInstanceTemplates();
+      Cluster clusterNewest = null;
+      //  process by wave number in outer loop so that roles are processed
+      //       in waves of phases of InstanceTemplates with roles selected by wave.
+      int waveCount = instanceTemplates.get(0).getWaveCount(); // count is same for any instanceTemplates.get(i)
 
+      for (int wave = 0; wave < waveCount; wave++) {
+        Cluster cluster = bootstrapCluster(clusterSpec, wave);
+        cluster = configureServices(clusterSpec, cluster, wave);
+        clusterNewest = startServices(clusterSpec, cluster, wave);
+      }
+      return clusterNewest;
     } catch (Throwable e) {
 
       if (clusterSpec.isTerminateAllOnLaunchFailure()) {
@@ -132,9 +141,9 @@ public class ClusterController {
   /**
    * Provision the hardware resources needed for running services
    */
-  public Cluster bootstrapCluster(ClusterSpec clusterSpec) throws IOException, InterruptedException {
+  public Cluster bootstrapCluster(ClusterSpec clusterSpec, int wave) throws IOException, InterruptedException {
     BootstrapClusterAction bootstrapper = new BootstrapClusterAction(getCompute(), handlerMapFactory.create());
-    Cluster cluster = bootstrapper.execute(clusterSpec, null);
+    Cluster cluster = bootstrapper.execute(clusterSpec, null, wave);
     getClusterStateStore(clusterSpec).save(cluster);
     return cluster;
   }
@@ -144,39 +153,44 @@ public class ClusterController {
    */
   @Beta
   public Cluster configureServices(ClusterSpec spec) throws IOException, InterruptedException {
-    return configureServices(spec, new Cluster(getInstances(spec, getClusterStateStore(spec))));
+    return configureServices(spec, new Cluster(getInstances(spec, getClusterStateStore(spec))), -1);
   }
 
   @Beta
-  public Cluster configureServices(ClusterSpec clusterSpec, Cluster cluster)
+  public Cluster configureServices(ClusterSpec clusterSpec, Cluster cluster, int wave)
     throws IOException, InterruptedException {
-    return configureServices(clusterSpec, cluster, EMPTYSET, EMPTYSET);
+    return configureServices(clusterSpec, cluster, EMPTYSET, EMPTYSET, wave);
   }
 
   @Beta
   public Cluster configureServices(ClusterSpec clusterSpec, Cluster cluster, Set<String> targetRoles,
-        Set<String> targetInstanceIds) throws IOException, InterruptedException {
+                                   Set<String> targetInstanceIds, int wave) throws IOException, InterruptedException {
     ConfigureServicesAction configurer = new ConfigureServicesAction(getCompute(), handlerMapFactory.create(),
         targetRoles, targetInstanceIds);
-    return configurer.execute(clusterSpec, cluster);
+    return configurer.execute(clusterSpec, cluster, wave);
   }
 
   /**
    * Start the cluster services
    */
   public Cluster startServices(ClusterSpec spec) throws IOException, InterruptedException {
-    return startServices(spec, new Cluster(getInstances(spec, getClusterStateStore(spec))));
+    return startServices(spec, new Cluster(getInstances(spec, getClusterStateStore(spec))), -1);
   }
 
-  public Cluster startServices(ClusterSpec clusterSpec, Cluster cluster)
+  public Cluster startServices(ClusterSpec clusterSpec, Cluster cluster, int wave)
     throws IOException, InterruptedException {
-    return startServices(clusterSpec, cluster, EMPTYSET, EMPTYSET);
+    return startServices(clusterSpec, cluster, EMPTYSET, EMPTYSET, wave);
   }
-  
+
   public Cluster startServices(ClusterSpec clusterSpec, Cluster cluster,
       Set<String> targetRoles, Set<String> targetInstanceIds) throws IOException, InterruptedException {
+    return startServices(clusterSpec, cluster, targetRoles, targetInstanceIds, -1);
+  }
+
+  public Cluster startServices(ClusterSpec clusterSpec, Cluster cluster,
+      Set<String> targetRoles, Set<String> targetInstanceIds, int wave) throws IOException, InterruptedException {
     StartServicesAction starter = new StartServicesAction(getCompute(), handlerMapFactory.create(), targetRoles, targetInstanceIds);
-    return starter.execute(clusterSpec, cluster);
+    return starter.execute(clusterSpec, cluster, wave);
   }
 
   /**
@@ -195,7 +209,7 @@ public class ClusterController {
   public Cluster stopServices(ClusterSpec clusterSpec, Cluster cluster, Set<String> targetRoles,
     Set<String> targetInstanceIds) throws IOException, InterruptedException {
     StopServicesAction stopper = new StopServicesAction(getCompute(), handlerMapFactory.create(), targetRoles, targetInstanceIds);
-    return stopper.execute(clusterSpec, cluster);
+    return stopper.execute(clusterSpec, cluster, -1);
   }
 
   /**
@@ -210,7 +224,7 @@ public class ClusterController {
   public Cluster cleanupCluster(ClusterSpec clusterSpec, Cluster cluster)
     throws IOException, InterruptedException {
     CleanupClusterAction cleanner = new CleanupClusterAction(getCompute(), handlerMapFactory.create());
-    return cleanner.execute(clusterSpec, cluster);
+    return cleanner.execute(clusterSpec, cluster, -1);
   }
   
   /**
@@ -230,7 +244,7 @@ public class ClusterController {
   public void destroyCluster(ClusterSpec clusterSpec, Cluster cluster)
     throws IOException, InterruptedException {
     DestroyClusterAction destroyer = new DestroyClusterAction(getCompute(), handlerMapFactory.create());
-    destroyer.execute(clusterSpec, cluster);
+    destroyer.execute(clusterSpec, cluster, -1);
   }
 
   public void destroyInstance(ClusterSpec clusterSpec, String instanceId) throws IOException {

@@ -56,9 +56,12 @@ import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.JSchException;
 import com.jcraft.jsch.KeyPair;
 
+// Terminology: be consistent with core/src/main/java/org/apache/whirr/service/package-info.java
+
 /**
  * This class represents the specification of a cluster. It is used to describe
  * the properties of a cluster before it is launched.
+ * See org.apache.whirr.service.package-info for terminology.
  */
 public class ClusterSpec {
   
@@ -527,15 +530,25 @@ public class ClusterSpec {
     return instanceTemplates;
   }
 
-  public InstanceTemplate getInstanceTemplate(final Set<String> roles) {
+  /** Get InstanceTemplate by role set.
+   * @param roleSet a set of roles used to find a matching InstanceTemplate, all the roles filled
+   *             by a machine set must be specified (if waves are being used, the complete
+   *              set of roles that are defined in separate waves must be combined here.).
+   * @return matching InstanceTemplate or null
+   */
+  public InstanceTemplate getInstanceTemplate(final Set<String> roleSet) {
     for (InstanceTemplate template : instanceTemplates) {
-      if (roles.equals(template.getRoles())) {
+      if (roleSet.equals(template.getRoles())) {
         return template;
       }
     }
     return null;
   }
 
+  /** Get InstanceTemplate by role set.
+   * @param roles the role set.
+   * @return
+   */
   public InstanceTemplate getInstanceTemplate(String... roles) {
     return getInstanceTemplate(Sets.newLinkedHashSet(Lists.newArrayList(roles)));
   }

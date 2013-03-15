@@ -82,7 +82,7 @@ public class ByonClusterAction extends ScriptBasedClusterAction {
   }
   
   @Override
-  protected void doAction(Map<InstanceTemplate, ClusterActionEvent> eventMap)
+  protected void doAction(Map<InstanceTemplate, ClusterActionEvent> eventMap, int wave)
       throws IOException, InterruptedException {
         
     final Collection<Future<ExecResponse>> futures = Sets.newHashSet();
@@ -93,6 +93,11 @@ public class ByonClusterAction extends ScriptBasedClusterAction {
     Set<Instance> allInstances = Sets.newLinkedHashSet();
 
     for (Entry<InstanceTemplate, ClusterActionEvent> entry : eventMap.entrySet()) {
+      Cluster priorCluster = entry.getValue().getCluster();
+      if (priorCluster != null &&  priorCluster.getInstances().size() > 0) {
+        LOG.info("Bootstrapping cluster, using prior instances");
+        return; // instances already allocated
+      }
 
       final ClusterSpec clusterSpec = entry.getValue().getClusterSpec();
       final StatementBuilder statementBuilder = entry.getValue().getStatementBuilder();
@@ -137,11 +142,12 @@ public class ByonClusterAction extends ScriptBasedClusterAction {
       templateNodes = templateNodes.subList(0, num);
       usedNodes.addAll(templateNodes);
       numberAllocated = usedNodes.size() ;
+
+      // note all roles (flattened) are used when creating Instance objs
+      Set<Instance> instanceSet = getInstances(credentials, entry.getKey().getRoles(), templateNodes);
+      allInstances.addAll(instanceSet);
       
-      Set<Instance> templateInstances = getInstances(credentials, entry.getKey().getRoles(), templateNodes);
-      allInstances.addAll(templateInstances);
-      
-      for (final Instance instance : templateInstances) {
+      for (final Instance instance : instanceSet) {
          futures.add(runStatementOnInstanceInCluster(statementBuilder, instance, clusterSpec, options));
       }
     }
@@ -162,7 +168,7 @@ public class ByonClusterAction extends ScriptBasedClusterAction {
     }
   }
   
-  private Set<Instance> getInstances(final Credentials credentials, final Set<String> roles,
+  private Set<Instance> getInstances(final Credentials credentials, final Set<String> rolesFlattened,
       Iterable<NodeMetadata> nodes) {
     return ImmutableSet.copyOf(transform(nodes,
         new Function<NodeMetadata, Instance>() {
@@ -170,7 +176,7 @@ public class ByonClusterAction extends ScriptBasedClusterAction {
           public Instance apply(NodeMetadata node) {
             String publicIp = get(node.getPublicAddresses().size() > 0 ? node.getPublicAddresses() : node.getPrivateAddresses(), 0);
             return new Instance(
-                credentials, roles, publicIp, publicIp, node.getId(), node
+                credentials, rolesFlattened, publicIp, publicIp, node.getId(), node
             );
           }
         }

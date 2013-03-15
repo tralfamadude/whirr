@@ -582,11 +582,11 @@ xsi:schemaLocation="http://maven.apache.org/XDOC/2.0 http://maven.apache.org/xsd
         <td>
           <tt>--client-cidrs</tt>
         </td>
-        <td>none</td>
+        <td>Default is the host running Whirr.</td>
         <td>A comma-separated list of 
         <a class="externalLink" href="http://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing">
-        CIDR</a>blocks. E.g. 
-        <tt>208.128.0.0/11,108.128.0.0/11</tt></td>
+        CIDR</a>blocks of connection sources to allow. E.g. 
+        <tt>208.128.0.0/11,108.128.0.0/11</tt>Combines with firewall ports specifier.  Use /32 for exact ip addr.</td>
       </tr>
       <tr valign="top">
         <td>
@@ -596,7 +596,7 @@ xsi:schemaLocation="http://maven.apache.org/XDOC/2.0 http://maven.apache.org/xsd
           <tt>--firewall-rules</tt>
         </td>
         <td>none</td>
-        <td>A comma-separated list of port numbers to open. E.g. <tt>8080,8181</tt>.</td>
+        <td>A comma-separated list of port numbers to open. E.g. <tt>8080,8181</tt> which is combined with <tt>whirr.client-cidrs</tt></td>
       </tr>
       <tr valign="top">
         <td>

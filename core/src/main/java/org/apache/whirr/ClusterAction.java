@@ -43,7 +43,17 @@ public abstract class ClusterAction {
   
   protected abstract String getAction();
 
-  public abstract Cluster execute(ClusterSpec clusterSpec, Cluster cluster)
+  /**
+   * Use given ClusterSpec and Cluster and wave to mutate the actual cluster (create, start services, terminate)
+   * and return a new Cluster object to reflect changes if necessary.
+   * @param clusterSpec
+   * @param cluster current cluster, null if cluster is not bootstrapped yet.
+   * @param wave a selector of role subsets, -1 if all roles should be used (no wave, (equiv. to one wave)).
+   * @return a new Cluster object to reflect changes if necessary (Cluster is idempotent for consistency reasons).
+   * @throws IOException
+   * @throws InterruptedException
+   */
+  public abstract Cluster execute(ClusterSpec clusterSpec, Cluster cluster, int wave)
       throws IOException, InterruptedException;
   
 }

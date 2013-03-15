@@ -107,7 +107,7 @@ public abstract class HadoopClusterActionHandler extends ClusterActionHandlerSup
     addStatement(event, call("retry_helpers"));
     addStatement(event, call(
       getConfigureFunction(getConfiguration(clusterSpec)),
-      Joiner.on(",").join(event.getInstanceTemplate().getRoles()),
+      Joiner.on(",").join(event.getInstanceTemplate().getRoles()), //ToDo: which getRoles()?
       "-c", clusterSpec.getProvider())
     );
   }

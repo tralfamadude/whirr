@@ -76,20 +76,20 @@ public class ByonClusterController extends ClusterController {
         .create();
     ClusterAction destroyer = new ByonClusterAction(DESTROY_ACTION,
         getCompute(), handlerMap);
-    destroyer.execute(clusterSpec, null);
+    destroyer.execute(clusterSpec, null, -1);
   }
   
   /**
    * Provisions the hardware for a BYON cluster.
    */
   @Override
-  public Cluster bootstrapCluster(ClusterSpec clusterSpec) throws IOException,
+  public Cluster bootstrapCluster(ClusterSpec clusterSpec, int wave) throws IOException,
       InterruptedException {
     LoadingCache<String, ClusterActionHandler> handlerMap = handlerMapFactory
         .create();
     ClusterAction bootstrapper = new ByonClusterAction(BOOTSTRAP_ACTION,
         getCompute(), handlerMap);
-    Cluster cluster = bootstrapper.execute(clusterSpec, null);
+    Cluster cluster = bootstrapper.execute(clusterSpec, null, wave);
     getClusterStateStore(clusterSpec).save(cluster);
     return cluster;
   }
@@ -99,13 +99,13 @@ public class ByonClusterController extends ClusterController {
    */
   @Override
   public Cluster configureServices(ClusterSpec clusterSpec, Cluster cluster,
-      Set<String> targetRoles, Set<String> targetInstanceIds)
+                                   Set<String> targetRoles, Set<String> targetInstanceIds, int wave)
       throws IOException, InterruptedException {
     LoadingCache<String, ClusterActionHandler> handlerMap = handlerMapFactory
         .create();
     ClusterAction configurer = new ByonClusterAction(CONFIGURE_ACTION,
         getCompute(), handlerMap);
-    cluster = configurer.execute(clusterSpec, cluster);
+    cluster = configurer.execute(clusterSpec, cluster, wave);
     getClusterStateStore(clusterSpec).save(cluster);
     return cluster;
   }

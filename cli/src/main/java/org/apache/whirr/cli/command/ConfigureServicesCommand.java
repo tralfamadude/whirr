@@ -53,8 +53,8 @@ public class ConfigureServicesCommand extends RoleLifecycleCommand {
         clusterSpec,
         getCluster(clusterSpec, controller),
         getTargetRolesOrEmpty(optionSet),
-        getTargetInstanceIdsOrEmpty(optionSet)
-    );
+        getTargetInstanceIdsOrEmpty(optionSet),
+        -1);
     return 0;
   }
 }

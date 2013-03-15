@@ -34,6 +34,7 @@ import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.UncheckedExecutionException;
 import java.io.IOException;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -80,6 +81,13 @@ public abstract class ScriptBasedClusterAction extends ClusterAction {
     this(getCompute, handlerMap, ImmutableSet.<String>of(), ImmutableSet.<String>of());
   }
 
+  /**
+   *
+   * @param getCompute
+   * @param handlerMap
+   * @param targetRoles if non-empty, only consider these roles.
+   * @param targetInstanceIds if non-empty, only consider these instanceIds
+   */
   protected ScriptBasedClusterAction(
       Function<ClusterSpec, ComputeServiceContext> getCompute,
       LoadingCache<String, ClusterActionHandler> handlerMap,
@@ -92,12 +100,24 @@ public abstract class ScriptBasedClusterAction extends ClusterAction {
     this.targetInstanceIds = ImmutableSet.copyOf(checkNotNull(targetInstanceIds, "targetInstanceIds"));
   }
 
-  public Cluster execute(ClusterSpec clusterSpec, Cluster cluster)
-      throws IOException, InterruptedException {
+  public Cluster execute(ClusterSpec clusterSpec, Cluster cluster, int wave)
+      throws IOException, InterruptedException
+  {
+    String waveComment = (wave == -1) ? "" : (" wave="+wave);
+    LOG.info("Start {} phase" + waveComment, getAction());
 
+    // eventMap is used to hold one event per InstanceTemplate
     Map<InstanceTemplate, ClusterActionEvent> eventMap = Maps.newHashMap();
     Cluster newCluster = cluster;
-    for (InstanceTemplate instanceTemplate : clusterSpec.getInstanceTemplates()) {
+
+    //
+    //  scan InstanceTemplate list,
+    //   for each InstanceTemplate that is included, compose the statements, firewall, file templates,
+    //   and ActionEvents into an event object.  Then trigger the before handlers for
+    //   each of the roles in the instance.
+    //
+    final List<InstanceTemplate> instanceTemplates = clusterSpec.getInstanceTemplates();
+    for (InstanceTemplate instanceTemplate : instanceTemplates) {
       if (shouldIgnoreInstanceTemplate(instanceTemplate)) {
         continue; // skip execution if this group of instances is not in target
       }
@@ -114,47 +134,62 @@ public abstract class ScriptBasedClusterAction extends ClusterAction {
 
       eventMap.put(instanceTemplate, event);
       eventSpecificActions(instanceTemplate, event);
-      for (String role : instanceTemplate.getRoles()) {
+      // for each role in the InstanceTemplate, perform the beforeActions
+      for (String role : instanceTemplate.getRoles(wave)) {
         if (roleIsInTarget(role)) {
           safeGetActionHandler(role).beforeAction(event);
         }
       }
 
       // cluster may have been updated by handler
+      //  (Cluster is idempotent so ref is replaced if updated)
       newCluster = event.getCluster();
     }
 
-    doAction(eventMap);
+    //
+    //  perform the remote actions on the tuples <InstanceTemplate, ClusterActionEvent>
+    //
+    doAction(eventMap, wave);
+    // remote script actions are completed at this point, effecting a barrier synchronization
 
-    // cluster may have been updated by action
+    // cluster obj may have been updated by action
+    //   (all the event instances hold the same cluster object)
     newCluster = Iterables.get(eventMap.values(), 0).getCluster();
 
+    //
+    //  scan InstanceTemplate list,
+    //   for each InstanceTemplate that is included, trigger the after handlers for
+    //   each of the roles in the instance.
+    //
     for (InstanceTemplate instanceTemplate : clusterSpec.getInstanceTemplates()) {
       if (shouldIgnoreInstanceTemplate(instanceTemplate)) {
         continue;
       }
       ClusterActionEvent event = eventMap.get(instanceTemplate);
-      for (String role : instanceTemplate.getRoles()) {
+      // for each role in the InstanceTemplate, perform the afterActions
+      for (String role : instanceTemplate.getRoles(wave)) {
         if (roleIsInTarget(role)) {
           event.setCluster(newCluster);
           safeGetActionHandler(role).afterAction(event);
 
           // cluster may have been updated by handler
+          //  (Cluster is idempotent so ref is replaced if updated)
           newCluster = event.getCluster();
         }
       }
     }
 
+    LOG.info("Finish {} phase" + waveComment, getAction());
     return newCluster;
   }
 
-  protected void doAction(Map<InstanceTemplate, ClusterActionEvent> eventMap)
+  protected void doAction(Map<InstanceTemplate, ClusterActionEvent> eventMap, int wave)
       throws InterruptedException, IOException {
-    runScripts(eventMap);
+    runScripts(eventMap, wave);
     postRunScriptsActions(eventMap);
   }
 
-  protected void runScripts(Map<InstanceTemplate, ClusterActionEvent> eventMap)
+  protected void runScripts(Map<InstanceTemplate, ClusterActionEvent> eventMap, final int wave)
       throws InterruptedException, IOException {
 
     final String phaseName = getAction();
@@ -164,6 +199,11 @@ public abstract class ScriptBasedClusterAction extends ClusterAction {
 
     final RunScriptOptions options = overrideLoginCredentials(LoginCredentials.builder().user(clusterSpec.getClusterUser())
                                                               .privateKey(clusterSpec.getPrivateKey()).build());
+    //
+    //  for each entry <InstanceTemplate, ClusterActionEvent>, if InstanceTemplate is included,
+    //    execute statements on each of the (compute host) instances bound
+    //    to the InstanceTemplate obj.
+    //
     for (Map.Entry<InstanceTemplate, ClusterActionEvent> entry : eventMap.entrySet()) {
       if (shouldIgnoreInstanceTemplate(entry.getKey())) {
         continue; // skip if not in the target
@@ -178,14 +218,15 @@ public abstract class ScriptBasedClusterAction extends ClusterAction {
       }
 
       Set<Instance> instances = cluster.getInstancesMatching(Predicates.<Instance> and(onlyRolesIn(entry.getKey()
-          .getRoles()), not(instanceIsNotInTarget())));
-      LOG.info("Starting to run scripts on cluster for phase {} " + "on instances: {}", phaseName,
-          asString(instances));
-
+          .getRoles(wave)), not(instanceIsNotInTarget())));
+      LOG.info("Starting to run scripts on cluster for phase {} of wave " + wave + " on instances: {}",
+          phaseName, asString(instances));
+      // create a Future for each instance
       for (Instance instance : instances) {
         futures.add(runStatementOnInstanceInCluster(statementBuilder, instance, clusterSpec, options));
       }
     }
+    // wait for all the Futures to finish
     for (Future<ExecResponse> future : futures) {
       try {
         future.get();
