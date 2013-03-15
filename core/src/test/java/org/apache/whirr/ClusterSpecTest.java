@@ -50,7 +50,6 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.google.common.io.Files;
 import com.jcraft.jsch.JSchException;
-import org.junit.rules.ExpectedException;
 
 public class ClusterSpecTest {
 
